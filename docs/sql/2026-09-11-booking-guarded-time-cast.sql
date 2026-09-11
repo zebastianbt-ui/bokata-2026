@@ -1,44 +1,6 @@
--- Booking guardrails for production hardening.
--- Apply in Supabase SQL editor before enabling strict reliance on the guarded RPC.
-
-create extension if not exists pgcrypto;
-
-create table if not exists public.outbound_emails (
-  id uuid primary key default gen_random_uuid(),
-  restaurant_id uuid references public.restaurants(id) on delete cascade,
-  booking_id text,
-  purpose text not null,
-  recipient text not null,
-  subject text not null,
-  html text not null,
-  status text not null default 'queued',
-  attempts integer not null default 0,
-  last_error text,
-  send_after timestamptz not null default now(),
-  sent_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists outbound_emails_status_send_after_idx
-  on public.outbound_emails (status, send_after);
-
-alter table public.outbound_emails enable row level security;
-
-drop policy if exists "service role manages outbound emails" on public.outbound_emails;
-create policy "service role manages outbound emails"
-  on public.outbound_emails
-  for all
-  using (auth.role() = 'service_role')
-  with check (auth.role() = 'service_role');
-
-create or replace function public.bokata_time_to_minutes(p_time text)
-returns integer
-language sql
-immutable
-as $$
-  select split_part(left(p_time, 5), ':', 1)::integer * 60
-       + split_part(left(p_time, 5), ':', 2)::integer;
-$$;
+-- Fix create_booking_guarded on databases where public.bookings.time is
+-- time without time zone. The RPC keeps p_time as text so the public API
+-- signature stays compatible, but casts at insert time.
 
 create or replace function public.create_booking_guarded(
   p_restaurant_id uuid,

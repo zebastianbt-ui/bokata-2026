@@ -257,6 +257,16 @@ const isMissingGuardedBookingRpc = (error: unknown) => {
   return err?.code === "42883" || /create_booking_guarded|function .* does not exist/i.test(text);
 };
 
+const isGuardedBookingTimeTypeMismatch = (error: unknown) => {
+  const err = error as { code?: string; message?: string; details?: string; hint?: string };
+  const text = `${err?.message ?? ""} ${err?.details ?? ""} ${err?.hint ?? ""}`;
+  return (
+    err?.code === "42804" &&
+    /column\s+"?time"?\s+is\s+of\s+type\s+time\s+without\s+time\s+zone/i.test(text) &&
+    /expression\s+is\s+of\s+type\s+text/i.test(text)
+  );
+};
+
 const guardedBookingError = (error: unknown) => {
   const message = ((error as { message?: string })?.message ?? "").toUpperCase();
   if (message.includes("BOKATA_SAME_EMAIL_LIMIT")) {
@@ -1016,7 +1026,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .insert({
         restaurant_id: restaurantId,
         date,
-        time,
+        time: normalizeTime(time),
         guests,
         name,
         notes: persistedNotes,
@@ -1065,6 +1075,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (isMissingGuardedBookingRpc(error)) {
       console.warn("create_booking_guarded RPC missing; falling back to direct booking insert");
+      return insertBookingDirect();
+    }
+
+    if (isGuardedBookingTimeTypeMismatch(error)) {
+      console.warn("create_booking_guarded RPC time type mismatch; falling back to direct booking insert");
       return insertBookingDirect();
     }
 
