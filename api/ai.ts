@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { rateLimit } from "../lib/rateLimit";
 import {
   MADAME_BLA_CLOSED_DATES,
+  getMadameBlaDropInRange,
   getMadameBlaHoursOverride as getSharedMadameBlaHoursOverride,
   isMadameBlaKnowledge,
   toSwedishDayName,
@@ -139,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
   const isMadameBlaWeekendDropInOnly = (iso?: string | null) => {
     const override = getMadameBlaHoursOverride(iso);
-    return !!override && !override.closed && (override.dayName === "lördag" || override.dayName === "söndag");
+    return !!override && !override.closed && !!iso && getMadameBlaDropInRange(iso, override.dayName) !== null;
   };
 
   const closedRangesText = (() => {

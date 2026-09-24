@@ -92,7 +92,9 @@ export const getMadameBlaDropInRange = (dateIso: string, day: SwedishDayName | s
     return { fromMin: 11 * 60, toMinExclusive: 16 * 60 };
   }
   if (isIsoInRange(dateIso, "2026-08-17", "2026-10-11")) {
-    if (day === "lördag" || day === "söndag") return { fromMin: 0, toMinExclusive: 24 * 60 };
+    const isWeekend = day === "lördag" || day === "söndag";
+    const isBookableOctoberWeekend = isIsoInRange(dateIso, "2026-10-01", "2026-10-11");
+    if (isWeekend && !isBookableOctoberWeekend) return { fromMin: 0, toMinExclusive: 24 * 60 };
     return null;
   }
   return null;
