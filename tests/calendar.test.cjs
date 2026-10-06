@@ -109,7 +109,7 @@ function apiFixture(options = {}) {
   };
   process.env.SUPABASE_URL = 'https://test.invalid'; process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only';
   process.env.GOOGLE_CALENDAR_CLIENT_ID = 'client-id'; process.env.GOOGLE_CALENDAR_CLIENT_SECRET = 'client-secret'; process.env.CRON_SECRET = 'cron-test'; process.env.CALENDAR_SYNC_ENABLED = 'true';
-  const handler = load('api/calendar.ts', { '@supabase/supabase-js': { createClient: () => client }, '../lib/rateLimit': { rateLimit: async () => ({ ok: true }) } }).default;
+  const handler = load('lib/calendarHandler.ts', { '@supabase/supabase-js': { createClient: () => client }, '../lib/rateLimit': { rateLimit: async () => ({ ok: true }) } }).default;
   const request = async (action, { method = 'GET', query = {}, body = {}, headers = {} } = {}) => {
     const req = { method, query: { action, restaurantId, ...query }, body: { restaurantId, ...body }, headers: { authorization: 'Bearer test', ...headers } };
     const res = { code: 200, headers: {}, setHeader(key, value) { this.headers[key] = value; }, status(code) { this.code = code; return this; },
@@ -227,7 +227,7 @@ test('failed Google synchronization stays queued for retry and reports reconnect
   } finally { global.fetch = previousFetch; }
 });
 test('cron cannot be invoked with a forged cron header or without its bearer secret', async () => {
-  const handler = load('api/calendar-sync.ts').default;
+  const handler = load('lib/calendarSyncHandler.ts').default;
   for (const headers of [{ 'x-vercel-cron': '1' }, { authorization: 'Bearer wrong' }]) {
     const res = { code: 200, setHeader() {}, status(code) { this.code = code; return this; }, end() {} };
     await handler({ method: 'GET', headers }, res); assert.equal(res.code, 401);

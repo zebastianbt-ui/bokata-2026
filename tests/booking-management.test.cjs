@@ -57,7 +57,7 @@ function fixture(options = {}) {
   delete process.env.RESEND_API_KEY;
   const mocks = { '@supabase/supabase-js': { createClient: () => client }, '../lib/rateLimit': { rateLimit: async () => ({ ok: true }) } };
   const handler = load('api/bookings.ts', mocks).default;
-  const read = load('api/bookings-manage.ts', mocks).default;
+  const read = load('lib/bookingManageHandler.ts', mocks).default;
   async function request(body = {}, method = 'PATCH') {
     const req = { method, body: { ...credentials, date: '2030-01-08', time: '13:00', ...body }, query: { ...credentials, ...body }, headers: {}, socket: { remoteAddress: '127.0.0.1' } };
     const res = { code: 200, headers: {}, setHeader(key, value) { this.headers[key] = value; }, status(code) { this.code = code; return this; }, json(data) { this.data = data; return this; } };

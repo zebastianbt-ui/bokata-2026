@@ -1,3 +1,7 @@
+import calendarHandler from "../lib/calendarHandler";
+import calendarSyncHandler from "../lib/calendarSyncHandler";
+import bookingManageHandler from "../lib/bookingManageHandler";
+export const config = { maxDuration: 60 };
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { PRIMARY_RESTAURANT_MISMATCH_CODE, resolveOwnerPrimaryRestaurant } from "../lib/ownerPrimary";
@@ -130,6 +134,10 @@ const isSuspiciousAiOverwrite = (existingKnowledge: unknown, incomingKnowledge: 
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Shared deployment entry point; each handler enforces its own authorization.
+  if (req.query.calendarRoute === "calendar") return calendarHandler(req, res);
+  if (req.query.calendarRoute === "sync") return calendarSyncHandler(req, res);
+  if (req.query.calendarRoute === "manage") return bookingManageHandler(req, res);
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method Not Allowed" });
     return;

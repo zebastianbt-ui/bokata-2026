@@ -7,6 +7,18 @@
   ],
   "rewrites": [
     {
+      "source": "/api/calendar",
+      "destination": "/api/booking-settings?calendarRoute=calendar"
+    },
+    {
+      "source": "/api/calendar-sync",
+      "destination": "/api/booking-settings?calendarRoute=sync"
+    },
+    {
+      "source": "/api/bookings-manage",
+      "destination": "/api/booking-settings?calendarRoute=manage"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
