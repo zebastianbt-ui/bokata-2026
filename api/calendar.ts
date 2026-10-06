@@ -12,7 +12,7 @@ import { rateLimit } from "../lib/rateLimit";
 export const config = { maxDuration: 60 };
 const value = (input: unknown) => typeof input === "string" ? input : "";
 const cookieName = "bokata_calendar_oauth";
-const googleConfigured = () => !!(process.env.GOOGLE_CALENDAR_CLIENT_ID && process.env.GOOGLE_CALENDAR_CLIENT_SECRET && process.env.CRON_SECRET);
+const googleConfigured = () => !!(process.env.CALENDAR_SYNC_ENABLED === "true" && process.env.GOOGLE_CALENDAR_CLIENT_ID && process.env.GOOGLE_CALENDAR_CLIENT_SECRET && process.env.CRON_SECRET);
 function cookie(value: string, age = 600) {
   return `${cookieName}=${value}; HttpOnly; SameSite=Lax; Path=/api/calendar; Max-Age=${age}${calendarSiteUrl().startsWith("https:") ? "; Secure" : ""}`;
 }

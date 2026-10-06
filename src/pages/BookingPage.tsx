@@ -1,4 +1,4 @@
-import { bookingFarewell } from "../../lib/bookingFarewell";
+import BookingConfirmation from "../components/BookingConfirmation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import forkTransparent from "../assets/fork-transparent.png";
@@ -1040,48 +1040,7 @@ export default function BookingPage() {
             </form>
           </section>
         ) : (
-          <section className="max-w-2xl mx-auto">
-            <div className="rounded-3xl bg-white shadow-sm border border-violet-100 p-6 md:p-8 text-center">
-              <h2 className="text-xl md:text-2xl font-extrabold text-gray-800">Tack! Din bokning är skickad</h2>
-              <p className="text-gray-600 mt-2">
-                En bekräftelse skickas till <span className="font-semibold">{created!.email}</span> inom kort.
-              </p>
-              <p className="text-gray-600 mt-2">
-                Om du inte hittar mejlet, glöm inte att kontrollera din skräppost.
-              </p>
-
-              <div className="mt-6 text-sm bg-violet-50 border border-violet-100 rounded-2xl p-4 text-left">
-                <div>
-                  <span className="font-semibold">Datum:</span> {created!.date}
-                </div>
-                <div>
-                  <span className="font-semibold">Tid:</span> {created!.time}
-                </div>
-                <div>
-                  <span className="font-semibold">Gäster:</span> {created!.guests}
-                </div>
-                <div>
-                  <span className="font-semibold">Namn:</span> {created!.name}
-                </div>
-                {created!.phone && (
-                  <div>
-                    <span className="font-semibold">Telefon:</span> {created!.phone}
-                  </div>
-                )}
-                {created!.notes && (
-                  <div>
-                    <span className="font-semibold">Kommentar:</span> {created!.notes}
-                  </div>
-                )}
-              </div>
-
-              <p className="mt-6 text-xl font-bold text-violet-700">
-                {bookingFarewell(created!.date)}
-              </p>
-
-              {null}
-            </div>
-          </section>
+          <BookingConfirmation reservation={created!} />
         )}
 
       </main>

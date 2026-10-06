@@ -1,7 +1,6 @@
 {
   "crons": [
-    { "path": "/api/followup-cron", "schedule": "0 8 * * *" },
-    { "path": "/api/calendar-sync", "schedule": "*/5 * * * *" }
+    { "path": "/api/followup-cron", "schedule": "0 8 * * *" }
   ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
@@ -9,8 +8,20 @@
   ],
   "headers": [
     {
+      "source": "/booking/confirmation-preview",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/booking/manage",
       "headers": [
+    {
+      "source": "/booking/confirmation-preview",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "Cache-Control", "value": "no-store" },
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }

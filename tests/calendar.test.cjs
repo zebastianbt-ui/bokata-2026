@@ -108,7 +108,7 @@ function apiFixture(options = {}) {
     },
   };
   process.env.SUPABASE_URL = 'https://test.invalid'; process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only';
-  process.env.GOOGLE_CALENDAR_CLIENT_ID = 'client-id'; process.env.GOOGLE_CALENDAR_CLIENT_SECRET = 'client-secret'; process.env.CRON_SECRET = 'cron-test';
+  process.env.GOOGLE_CALENDAR_CLIENT_ID = 'client-id'; process.env.GOOGLE_CALENDAR_CLIENT_SECRET = 'client-secret'; process.env.CRON_SECRET = 'cron-test'; process.env.CALENDAR_SYNC_ENABLED = 'true';
   const handler = load('api/calendar.ts', { '@supabase/supabase-js': { createClient: () => client }, '../lib/rateLimit': { rateLimit: async () => ({ ok: true }) } }).default;
   const request = async (action, { method = 'GET', query = {}, body = {}, headers = {} } = {}) => {
     const req = { method, query: { action, restaurantId, ...query }, body: { restaurantId, ...body }, headers: { authorization: 'Bearer test', ...headers } };

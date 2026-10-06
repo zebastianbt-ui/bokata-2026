@@ -1,6 +1,6 @@
 # Restaurant calendars
 
-The dashboard's **Inställningar → Kalenderanslutningar** lets the restaurant owner enable Google Calendar, Apple Calendar, or both. The feature is implemented locally; the production database and Google OAuth project still need configuration.
+The dashboard's **Inställningar → Kalenderanslutningar** lets the restaurant owner enable Google Calendar, Apple Calendar, or both. The feature is committed; the production database and Google OAuth project still need configuration. The confirmation can be previewed without making a booking at `/booking/confirmation-preview`.
 
 ## What is synchronized
 
@@ -25,7 +25,7 @@ The dashboard's **Inställningar → Kalenderanslutningar** lets the restaurant 
    `https://www.bokata.se/api/calendar?action=google-callback`
 
    Request only `https://www.googleapis.com/auth/calendar.app.created`. Configure the support contact, app domain, privacy policy and test users; complete Google's production publishing/verification requirements before making this available to all restaurant owners. OAuth clients in testing mode can have short-lived refresh grants.
-4. Deploy the code and migration together. `vercel.json` invokes `/api/calendar-sync` every five minutes; **this frequency requires Vercel Pro/Enterprise**. On Hobby, use an authenticated external scheduler instead and remove that cron entry before deploying. Do not silently replace it with a daily job: that would violate the intended refresh behavior. The endpoint requires the bearer secret; `x-vercel-cron` alone is rejected.
+4. Configure an authenticated scheduler to call `/api/calendar-sync` every five minutes. **The five-minute job is deliberately absent from `vercel.json`: it blocked deployments on the current Hobby plan.** With Vercel Pro/Enterprise, add `{ "path": "/api/calendar-sync", "schedule": "*/5 * * * *" }` to the `crons` array. On Hobby, use an external scheduler with the `Authorization: Bearer <CRON_SECRET>` header. The endpoint rejects `x-vercel-cron` alone. Once the scheduler is running, set `CALENDAR_SYNC_ENABLED=true` in the Production environment and redeploy. Until then, the Google connection button remains unavailable; Apple subscriptions do not require a scheduler. Do not silently substitute a daily schedule.
 5. Log in as a restaurant owner, open the calendar settings and authorize a test Google account. Confirm the first synchronization, then subscribe from an Apple device. No customer emails are sent by calendar synchronization and no guest attendees are added.
 
 ## Reliability and access
