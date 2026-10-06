@@ -12,13 +12,13 @@ const KNOWLEDGE_MESSAGE_LABELS = [
   BOOKING_CONFIRMATION_EMAIL_AUTO_LABEL,
   BOOKING_CONFIRMATION_EMAIL_MANUAL_LABEL,
 ];
-const getBookingCancelSecret = (serviceKey: string) => getEnv("BOOKING_CANCEL_SECRET") || serviceKey;
-const signBookingCancel = (secret: string, bookingId: string, email: string) =>
+const getBookingLinkSecret = (serviceKey: string) => getEnv("BOOKING_CANCEL_SECRET") || serviceKey;
+const signBookingLink = (secret: string, bookingId: string, email: string) =>
   crypto.createHmac("sha256", secret).update(`${bookingId}:${email.toLowerCase().trim()}`).digest("hex");
-const buildBookingCancelUrl = (origin: string, secret: string, bookingId: string, email: string) => {
+const buildBookingManageUrl = (origin: string, secret: string, bookingId: string, email: string) => {
   const normalizedEmail = email.toLowerCase().trim();
-  const sig = signBookingCancel(secret, bookingId, normalizedEmail);
-  return `${origin}/api/bookings-cancel?bid=${encodeURIComponent(bookingId)}&email=${encodeURIComponent(normalizedEmail)}&sig=${encodeURIComponent(sig)}`;
+  const sig = signBookingLink(secret, bookingId, normalizedEmail);
+  return `${origin}/booking/manage?bid=${encodeURIComponent(bookingId)}&email=${encodeURIComponent(normalizedEmail)}&sig=${encodeURIComponent(sig)}`;
 };
 
 const escapeHtml = (value: string) =>
@@ -146,10 +146,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const nextStatus = action === "confirm" ? "confirmed" : "cancelled";
-  await supabase
+  const { data: updatedBooking, error: updateError } = await supabase
     .from("bookings")
     .update({ status: nextStatus, confirm_token: null })
-    .eq("id", booking.id);
+    .eq("id", booking.id)
+    .eq("confirm_token", token)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  if (updateError || !updatedBooking) {
+    res.status(updateError ? 500 : 409).send("Bokningen kunde inte uppdateras. Länken kan ha ersatts av en ny bekräftelselänk.");
+    return;
+  }
 
   let bookingMessageRaw = "";
   if (booking.restaurant_id) {
@@ -182,7 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   if (booking.client_email && action === "confirm") {
-    const cancelUrl = buildBookingCancelUrl(getSiteUrl(), getBookingCancelSecret(serviceKey), String(booking.id), booking.client_email);
+    const manageUrl = buildBookingManageUrl(getSiteUrl(), getBookingLinkSecret(serviceKey), String(booking.id), booking.client_email);
     const firstName = extractFirstName(booking.name);
     const { greeting, body } = resolveGreetingAndMessageBody(bookingMessageRaw, firstName);
     const greetingHtml = escapeHtml(greeting);
@@ -195,7 +203,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         <p>Tack för er bokning!</p>
         ${bookingMessageHtml ? `<p>${bookingMessageHtml}</p>` : "<p>Vi ser fram emot att välkomna er!</p>"}
         <p>(${booking.date} kl ${booking.time} • ${booking.guests} gäster)</p>
-        <p>Kan du inte komma? <a href="${cancelUrl}">Avboka din reservation här</a>.</p>
+        <p>Du kan <a href="${manageUrl}">ändra din bokning här</a>.</p>
       `
     );
   }

@@ -1,3 +1,4 @@
+import { loadManagedBooking } from "../lib/bookingManagement";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { rateLimit } from "../lib/rateLimit";
@@ -28,13 +29,13 @@ type BookingSettings = {
 
 const getEnv = (key: string) => process.env[key] ?? "";
 const getSiteUrl = () => getEnv("SITE_URL") || "https://www.bokata.se";
-const getBookingCancelSecret = (serviceKey: string) => getEnv("BOOKING_CANCEL_SECRET") || serviceKey;
-const signBookingCancel = (secret: string, bookingId: string, email: string) =>
+const getBookingLinkSecret = (serviceKey: string) => getEnv("BOOKING_CANCEL_SECRET") || serviceKey;
+const signBookingLink = (secret: string, bookingId: string, email: string) =>
   crypto.createHmac("sha256", secret).update(`${bookingId}:${email.toLowerCase().trim()}`).digest("hex");
-const buildBookingCancelUrl = (origin: string, secret: string, bookingId: string, email: string) => {
+const buildBookingManageUrl = (origin: string, secret: string, bookingId: string, email: string) => {
   const normalizedEmail = email.toLowerCase().trim();
-  const sig = signBookingCancel(secret, bookingId, normalizedEmail);
-  return `${origin}/api/bookings-cancel?bid=${encodeURIComponent(bookingId)}&email=${encodeURIComponent(normalizedEmail)}&sig=${encodeURIComponent(sig)}`;
+  const sig = signBookingLink(secret, bookingId, normalizedEmail);
+  return `${origin}/booking/manage?bid=${encodeURIComponent(bookingId)}&email=${encodeURIComponent(normalizedEmail)}&sig=${encodeURIComponent(sig)}`;
 };
 
 const getToken = (req: VercelRequest) => {
@@ -657,7 +658,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  if (req.method !== "POST") {
+  if (req.method !== "POST" && req.method !== "PATCH") {
     res.status(405).json({ error: "Method Not Allowed" });
     return;
   }
@@ -681,6 +682,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
+  const editing = req.method === "PATCH";
+  let original: any = null;
+  let bookingInput = req.body ?? {};
+  if (editing) {
+    res.setHeader("Cache-Control", "no-store");
+    const result = await loadManagedBooking(supabase, getBookingLinkSecret(serviceKey), req.body);
+    if (result.error) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    original = result.booking;
+    if (!["confirmed", "pending"].includes(original.status) || isPastBookingSlot(original.date, original.time)) {
+      res.status(409).json({ error: "Den här bokningen kan inte längre ändras. Kontakta restaurangen för hjälp." });
+      return;
+    }
+    // Only the date and time are guest-editable. Everything else comes from the signed booking.
+    bookingInput = {
+      restaurantId: original.restaurant_id, date: req.body.date, time: req.body.time,
+      guests: original.guests, name: original.name, email: original.client_email,
+      phone: original.client_phone, notes: parseBookingNotesMeta(original.notes).notes,
+    };
+  }
+
   const {
     restaurantId,
     date,
@@ -690,7 +714,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     email,
     phone,
     notes,
-  } = (req.body ?? {}) as {
+  } = bookingInput as {
     restaurantId?: string;
     date?: string;
     time?: string;
@@ -706,6 +730,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(Date.parse(`${date}T12:00:00Z`)) || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date ||
+      typeof time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    res.status(400).json({ error: "Ange ett giltigt datum och klockslag." });
+    return;
+  }
+
   if (isPastBookingSlot(date, time)) {
     res.status(400).json({ error: "Det går inte att boka en passerad tid." });
     return;
@@ -718,11 +749,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  const { data: settings } = await supabase
+  const { data: settings, error: settingsError } = await supabase
     .from("booking_public_settings")
     .select("seating,hours,notify_email,notify_enabled,require_manual_confirmation,knowledge_public")
     .eq("public_id", restaurantId)
     .maybeSingle();
+
+  if (settingsError || (editing && !settings)) {
+    res.status(503).json({ error: "Bokningsinställningarna kunde inte hämtas. Försök igen senare." });
+    return;
+  }
 
   const s = (settings ?? {}) as BookingSettings & { hours?: any };
   const requireManual = !!s.require_manual_confirmation;
@@ -743,7 +779,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     s.knowledge_public,
     BOOKING_CONFIRMATION_EMAIL_AUTO_LABEL
   );
-  const rawDuration = s.seating?.maxBookingDurationMin ?? 90;
+  const rawDuration = original?.duration_min ?? s.seating?.maxBookingDurationMin ?? 90;
   const durationMin = rawDuration && rawDuration > 0 ? rawDuration : 90;
   const maxGuests = s.seating?.maxGuests ?? 60;
   const maxTables = s.seating?.maxTables ?? 20;
@@ -757,13 +793,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const { count: sameEmailCount } = await supabase
+  let sameEmailQuery = supabase
     .from("bookings")
     .select("id", { count: "exact", head: true })
     .eq("restaurant_id", restaurantId)
     .eq("date", date)
     .eq("client_email", normalizedEmail)
     .neq("status", "cancelled");
+  if (original) sameEmailQuery = sameEmailQuery.neq("id", original.id);
+  const { count: sameEmailCount, error: sameEmailError } = await sameEmailQuery;
+  if (sameEmailError) {
+    res.status(503).json({ error: "Tillgängligheten kunde inte kontrolleras. Försök igen senare." });
+    return;
+  }
   if ((sameEmailCount ?? 0) >= 2) {
     res.status(400).json({ error: "Max 2 bokningar per dag för samma e‑postadress." });
     return;
@@ -771,9 +813,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const hours = s.hours ?? null;
   if (hours || madameBlaOverride) {
-    const special = Array.isArray(hours.special) ? hours.special : [];
-    const periods = Array.isArray(hours.periods) ? hours.periods : [];
-    const normal = hours.normal ?? null;
+    const special = Array.isArray(hours?.special) ? hours?.special : [];
+    const periods = Array.isArray(hours?.periods) ? hours?.periods : [];
+    const normal = hours?.normal ?? null;
     const dayName = toDayNameSv(date);
     if (!dayName) {
       res.status(400).json({ error: "Ogiltigt datum." });
@@ -816,12 +858,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const { data: sameDayBookings } = await supabase
+  let sameDayQuery = supabase
     .from("bookings")
     .select("time,guests,duration_min,status,table_id,notes")
     .eq("restaurant_id", restaurantId)
     .eq("date", date)
     .neq("status", "cancelled");
+
+  if (original) sameDayQuery = sameDayQuery.neq("id", original.id);
+  const { data: sameDayBookings, error: sameDayError } = await sameDayQuery;
+  if (sameDayError) {
+    res.status(503).json({ error: "Tillgängligheten kunde inte kontrolleras. Försök igen senare." });
+    return;
+  }
 
   const startMin = timeToMin(normalizeTime(time));
   const endMin = startMin + durationMin;
@@ -842,11 +891,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let assignedTableId: number | null = null;
   let assignedTableIds: number[] = [];
-  const { data: floorplanRow } = await supabase
+  const { data: floorplanRow, error: floorplanError } = await supabase
     .from("floorplans")
     .select("layout")
     .eq("restaurant_id", restaurantId)
     .maybeSingle();
+
+  if (floorplanError) {
+    res.status(503).json({ error: "Tillgängligheten kunde inte kontrolleras. Försök igen senare." });
+    return;
+  }
 
   const planTables = (floorplanRow as any)?.layout?.tables as
     | Array<{ seats?: number; x?: number; y?: number; w?: number; h?: number; label?: string }>
@@ -1088,7 +1142,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return { data: null, error };
   };
 
-  const { data: inserted, error } = await insertBookingGuarded();
+  const updateBookingGuarded = async (): Promise<BookingInsertResult> => {
+    const { data, error } = await supabase.rpc("reschedule_booking_guarded", {
+      p_booking_id: String(original.id), p_expected_date: original.date,
+      p_expected_time: String(original.time), p_expected_status: original.status,
+      p_date: date, p_time: time, p_duration_min: durationMin,
+      p_max_guests: maxGuests, p_max_tables: maxTables,
+      p_notes: persistedNotes, p_table_id: assignedTableId,
+      p_status: status, p_confirm_token: confirmToken, p_confirm_expires_at: confirmExpiresAt,
+    });
+    if (error) {
+      const mapped = guardedBookingError(error);
+      return { data: null, error: mapped ?? {
+        status: 409,
+        message: "Bokningen kunde inte ändras. Ladda om sidan och försök igen, eller kontakta restaurangen.",
+      } };
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    return { data: row?.id ? { id: String(row.id) } : null, error: null };
+  };
+
+  const { data: inserted, error } = await (editing ? updateBookingGuarded() : insertBookingGuarded());
 
   if (error) {
     res.status(error.status ?? 500).json({ error: error.message });
@@ -1102,9 +1176,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const origin = getSiteUrl();
   const summary = `${date} kl ${time} • ${guests} gäster`;
   const bookingId = String(inserted.id);
-  const cancelUrl =
+  const manageUrl =
     bookingId && normalizedEmail
-      ? buildBookingCancelUrl(origin, getBookingCancelSecret(serviceKey), bookingId, normalizedEmail)
+      ? buildBookingManageUrl(origin, getBookingLinkSecret(serviceKey), bookingId, normalizedEmail)
       : null;
 
   type EmailDeliveryResult = { ok: boolean; status: number; text: string };
@@ -1154,9 +1228,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     emailJobs.push(
       sendEmail(
         notifyEmail,
-        requireManual ? "Ny bokning (väntar på bekräftelse)" : "Ny bokning",
+        editing ? "Ändrad bokning" : requireManual ? "Ny bokning (väntar på bekräftelse)" : "Ny bokning",
         `
-        <h2>Ny bokning</h2>
+        <h2>${editing ? "Ändrad bokning" : "Ny bokning"}</h2>
+        ${editing ? `<p>Tidigare: ${escapeHtml(original.date)} kl ${escapeHtml(String(original.time).slice(0, 5))}</p>` : ""}
         <p><strong>${safeName}</strong></p>
         <p>${summary}</p>
         <p>Email: ${safeClientEmail}${safePhone ? `<br/>Telefon: ${safePhone}` : ""}</p>
@@ -1175,13 +1250,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     emailJobs.push(
       sendEmail(
         normalizedEmail,
-        "Din bokning är bekräftad!",
+        editing ? "Din bokning har ändrats!" : "Din bokning är bekräftad!",
         `
         <p>${greetingHtml}</p>
-        <p>Tack för er bokning!</p>
+        <p>${editing ? "Din bokning har ändrats." : "Tack för er bokning!"}</p>
         ${bookingMessageHtml ? `<p>${bookingMessageHtml}</p>` : "<p>Vi ser fram emot att välkomna er!</p>"}
         <p>(${summary})</p>
-        ${cancelUrl ? `<p>Kan du inte komma? <a href="${cancelUrl}">Avboka din reservation här</a>.</p>` : ""}
+        ${manageUrl ? `<p>Du kan <a href="${manageUrl}">ändra din bokning här</a>.</p>` : ""}
       `
       ).then((result) => ({ purpose: "guest-confirmation", ...result }))
     );

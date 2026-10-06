@@ -1,3 +1,4 @@
+import { bookingFarewell } from "../../lib/bookingFarewell";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import forkTransparent from "../assets/fork-transparent.png";
@@ -1043,13 +1044,13 @@ export default function BookingPage() {
             <div className="rounded-3xl bg-white shadow-sm border border-violet-100 p-6 md:p-8 text-center">
               <h2 className="text-xl md:text-2xl font-extrabold text-gray-800">Tack! Din bokning är skickad</h2>
               <p className="text-gray-600 mt-2">
-                En bekräftelse skickas till <span className="font-semibold">{created!.email}</span>.
+                En bekräftelse skickas till <span className="font-semibold">{created!.email}</span> inom kort.
+              </p>
+              <p className="text-gray-600 mt-2">
+                Om du inte hittar mejlet, glöm inte att kontrollera din skräppost.
               </p>
 
               <div className="mt-6 text-sm bg-violet-50 border border-violet-100 rounded-2xl p-4 text-left">
-                <div>
-                  <span className="font-semibold">ID:</span> {created!.id}
-                </div>
                 <div>
                   <span className="font-semibold">Datum:</span> {created!.date}
                 </div>
@@ -1074,20 +1075,9 @@ export default function BookingPage() {
                 )}
               </div>
 
-              <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
-                <button
-                  onClick={() => setCreated(null)}
-                  className="px-5 py-3 rounded-2xl font-semibold text-white bg-gradient-to-r from-violet-600 via-pink-600 to-rose-600 shadow-md hover:shadow-lg transition"
-                >
-                  Ny bokning
-                </button>
-                <a
-                  href={`/booking?r=${restaurantSlug}`}
-                  className="px-5 py-3 rounded-2xl font-semibold text-violet-700 bg-violet-50 border border-violet-100 hover:bg-violet-100 transition"
-                >
-                  Tillbaka
-                </a>
-              </div>
+              <p className="mt-6 text-xl font-bold text-violet-700">
+                {bookingFarewell(created!.date)}
+              </p>
 
               {null}
             </div>

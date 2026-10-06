@@ -1,3 +1,4 @@
+import CalendarConnections from "../components/CalendarConnections";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
@@ -1078,7 +1079,7 @@ function ReservationDashboardInner() {
   const [activeMeal, setActiveMeal] = useState<Meal>("Alla");
   const [openBooking, setOpenBooking] = useState<Booking | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => new URLSearchParams(window.location.search).has("calendar"));
   const [activeTab, setActiveTab] = useState<"overview" | "tableplan">("overview");
 
   const today = useMemo(() => new Date(), []);
@@ -4217,6 +4218,11 @@ function ReservationDashboardInner() {
       {settingsOpen && (
         <Drawer onClose={() => setSettingsOpen(false)}>
           <div className="space-y-6" onInputCapture={markSettingsDirty} onChangeCapture={markSettingsDirty}>
+            {restaurantId && session?.access_token && (
+              <Section title="Kalenderanslutningar">
+                <CalendarConnections key={restaurantId} restaurantId={restaurantId} accessToken={session.access_token} isOwner={restaurantRole === "owner"} />
+              </Section>
+            )}
             <Section title="Restauranginfo">
               {primaryMismatchNotice ? (
                 <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 flex items-center justify-between gap-2">
